@@ -1,6 +1,6 @@
 # Third-party notices
 
-本项目是独立开发的工作区插件管理原型，不是以下两个上游项目的官方版本。没有复制它们的完整运行时或完整界面。
+本项目是独立开发的工作区插件管理预览，不是以下上游项目的官方版本。没有复制它们的完整运行时或完整界面。
 
 ## dsh-workspace-scope
 
@@ -24,6 +24,13 @@
 
 ## DeepSeek Harness / Cordis / Schemastery
 
-运行与开发使用宿主公开接口，未复制宿主实现进发布目录。SDK 测试读取独立目录中的宿主包副本；该副本不包含在插件包内。各运行时依赖继续适用其各自许可证。
+- 作者/版权方：DeepSeek。
+- 项目：[deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)。
+- 参考版本：`@deepseek-ai/dsh-agent-preset-registry@0.2.1-rc.2`。
+- 直接改编：原生 `lib/types/mount.js` 的根 realm 服务所有权审计方法 → `src/native-catalog.js` 中的 `rootServices()`。本项目调整了句柄与实际 fiber 的身份比较，并用于逐 Agent 加载的激活检查。
+- 许可证：MIT，[保留的原文](licenses/deepseek-harness.LICENSE)。
+- 原生插件发现、启停、配置校验与写入复用宿主公开接口；没有复制原生插件管理器或 ConfigEditor 的实现。
+
+SDK 测试读取独立目录中的宿主包副本，该副本不包含在仓库或插件包内。各运行时依赖继续适用其各自许可证。
 
 下载来源、提交日期和归档 SHA-256 记录在 [docs/upstream-provenance.json](docs/upstream-provenance.json)。上游完整源码与 SDK 副本不随本仓库分发；原始源码另在本地保留，未作修改。

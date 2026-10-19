@@ -1,7 +1,8 @@
-import { resolve } from 'node:path'
+import { isAbsolute, relative, resolve } from 'node:path'
 import { clone, effective, fail, validateConfig, validateDocument } from './policy.js'
+import { publicConfig } from './config-data.js'
 
-/** Owns only registered adapters, never the shared profile Loader entries. */
+/** Owns scoped instances; profile operations go through the native catalog. */
 export class WorkspacePluginManager {
   constructor({ ctx, workspaces, agents, readDocument, writeDocument }) {
     Object.assign(this, { ctx, workspaces, agents, readDocument, writeDocument })
@@ -26,17 +27,26 @@ export class WorkspacePluginManager {
   workspaceFor(agent) {
     const cwd = agent?.session?.header?.cwd
     if (typeof cwd !== 'string') fail('workspace-not-found', '对话没有工作目录')
-    const matches = this.workspaces().filter(w => resolve(w.path) === resolve(cwd))
-    if (matches.length !== 1) fail('workspace-not-found', '对话工作目录必须对应一个已注册工作区')
+    const matches = this.workspaces().filter(w => {
+      const child = relative(resolve(w.path), resolve(cwd))
+      return child === '' || (!isAbsolute(child) && child !== '..' && !child.startsWith('../') && !child.startsWith('..\\'))
+    }).sort((a, b) => resolve(b.path).length - resolve(a.path).length)
+    if (!matches.length || (matches[1] && resolve(matches[0].path) === resolve(matches[1].path))) fail('workspace-not-found', '对话工作目录没有唯一的工作区归属')
     return matches[0]
   }
   snapshot() {
-    const document = this.readDocument()
+    const document = clone(this.readDocument())
+    for (const workspace of document.workspaces) for (const row of workspace.plugins) {
+      const descriptor = this.descriptors.get(row.id)
+      if (descriptor?.native) row.config.settings = descriptor.native.unavailable ? {} : publicConfig(descriptor.native.schema, row.config.settings).value
+      else if (row.id.startsWith('native.')) row.config = {}
+    }
     return {
       workspaces: this.workspaces().map(w => ({ id: w.id, title: w.title, path: w.path })),
       plugins: [...this.descriptors.values()].map(d => ({
         id: d.id, title: d.title ?? d.id, description: d.description ?? '', scope: d.scope,
-        fields: clone(d.fields), defaults: clone(d.defaults), enabledByDefault: d.enabledByDefault ?? false,
+        fields: clone(d.fields), defaults: d.native ? { settings: publicConfig(d.native.schema, d.defaults.settings).value } : clone(d.defaults), enabledByDefault: d.enabledByDefault ?? false,
+        native: d.native ? { entryId: d.native.entryId, schema: d.native.schema?.toJSON() } : undefined,
       })),
       document: clone(document),
     }
@@ -46,11 +56,12 @@ export class WorkspacePluginManager {
       if (this.closed) fail('disposed', '管理器已停止')
       if (override !== null && (!override || typeof override !== 'object' || Array.isArray(override) || Object.keys(override).some(k => !['enabled', 'config'].includes(k)))) fail('invalid-config', '工作区覆盖只接受开关和配置')
       const document = clone(this.readDocument())
+      const descriptor = this.descriptors.get(pluginId)
+      if (override !== null && descriptor?.prepareConfig) override = { ...override, config: descriptor.prepareConfig(effective(document, workspaceId, descriptor).config, override.config) }
       let workspace = document.workspaces.find(w => w.workspaceId === workspaceId)
       if (!workspace) document.workspaces.push(workspace = { workspaceId, plugins: [] })
       workspace.plugins = workspace.plugins.filter(p => p.id !== pluginId)
       if (override !== null) workspace.plugins.push({ id: pluginId, enabled: override.enabled, config: clone(override.config ?? {}) })
-      const descriptor = this.descriptors.get(pluginId)
       if (!descriptor || descriptor.scope === 'global') fail('unsupported-plugin', '此插件没有工作区独立配置接口')
       // Validate the edited workspace/plugin only. Preferences belonging to a
       // removed adapter or a removed workspace must remain intact and must not
@@ -59,6 +70,14 @@ export class WorkspacePluginManager {
       await this.writeDocument(document)
       // Existing fibers remain intact until their next prompt assembly.
       return this.snapshot()
+    })
+    this.writeQueue = run.catch(() => {})
+    return run
+  }
+  editDocument(change) {
+    const run = this.writeQueue.then(async () => {
+      if (this.closed) fail('disposed', '管理器已停止')
+      await this.writeDocument(change(clone(this.readDocument())))
     })
     this.writeQueue = run.catch(() => {})
     return run
@@ -72,9 +91,18 @@ export class WorkspacePluginManager {
   }
   async reconcile(agent) {
     if (this.closed) fail('disposed', '管理器已停止')
-    const workspace = this.workspaceFor(agent)
+    await this.beforeReconcile?.()
+    let workspace
+    try { workspace = this.workspaceFor(agent) }
+    catch (error) {
+      if (error.code !== 'workspace-not-found') throw error
+      const changed = this.bindings.has(agent.id)
+      await this.releaseBinding(agent.id)
+      return changed
+    }
     const document = this.readDocument()
     const desired = [...this.descriptors.values()].filter(d => d.scope === 'workspace').map(descriptor => ({ descriptor, ...effective(document, workspace.id, descriptor) }))
+    for (const item of desired) if (item.enabled) await item.descriptor.check?.()
     const old = this.bindings.get(agent.id)
     const key = JSON.stringify([workspace.id, desired.map(d => [d.descriptor.id, d.enabled, d.config])])
     if (old?.agent === agent && old.key === key && desired.every(d => old.records.get(d.descriptor.id)?.descriptor === d.descriptor)) return false

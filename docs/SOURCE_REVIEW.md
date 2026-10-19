@@ -41,6 +41,8 @@
 
 ## 独立原型
 
+本节记录 `0.1.0-prototype.1` 的初始实现；`0.2.0-alpha.1` 已加入原生插件通用管理与普通 Cordis 插件直接加载，当前范围见 [GENERAL_MANAGEMENT.md](GENERAL_MANAGEMENT.md)。
+
 源码位于本仓库的 `src/`。它不动态安装第三方包，也不改其他插件的 profile 条目。
 
 `workspacePlugins.register()` 是明确的适配接口。支持工作区和跨工作区两种运行方式，原生全局清单保留只读提示。随包的工作区指令与继承工具开关用于验证真实能力；跨区磁盘迁移仍未接管。

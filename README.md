@@ -1,12 +1,17 @@
 # DSH 工作区插件管理器
 
-开发原型 `0.1.0-prototype.1`，目标宿主为 DSH `0.2.1-rc.2`。源码与验证均在独立目录中完成，未安装进运行中的 DSH。
+开发预览 `0.2.0-alpha.1`，目标宿主为 DSH `0.2.1-rc.2`。提供原生插件管理与工作区插件管理，源码与验证在独立目录中完成。
 
-每个工作区可以为接入管理器的插件分别保存开关和参数。对话始终按自己的工作目录解析工作区；界面切换不会改变其他对话的配置。修改在该对话下一次提示词组装前应用，不撤销已经发出的请求。原型使用 DSH 原生 Config/Settings 保存自己的配置，使用原生 Agent 作用域注册提示词与工具限制，不修改 DSH 文件、不替换全局配置、不切换已有会话的 Agent 预设。
+无需逐个编写适配器，即可发现原生插件、启停可寻址条目/组合包、编辑活动条目的配置。工作区层可以直接加载依赖作用域接口的普通 Cordis Host 插件，让 A/B 对话使用独立的实例和参数。提供全局服务或跨工作区操作的插件继续使用原生全局管理。
+
+对话按自己的工作目录及其所属工作区解析设置；界面切换不会改变其他对话的配置。工作区修改在下一次提示词组装前应用，不撤销已经发出的请求。管理器使用 DSH 原生 Config/Settings 保存配置，不修改宿主文件，不切换已有会话的 Agent 预设。
 
 ## 当前已实现
 
 - 工作区选择、逐插件开关、逐字段配置、恢复默认。
+- 自动发现原生插件与组合包；复用原生开关，保留只读原因、失败、覆盖和需要重启的结果。
+- 通用 JSON 配置编辑，使用插件原生 Config 校验；过期写入拒绝，标记为 secret 的字段脱敏并在省略时保留。
+- 普通 Cordis 插件直接接管到工作区，不要求实现 `workspacePlugins.register()`。
 - 同时运行的 A/B 对话使用各自配置；同一工作区的多个对话分别持有注册。
 - 配置通过当前 profile 中管理器自己的 `workspace-plugin-manager` 条目持久化。
 - 原生 `agent/created` / `agent/disposed` 生命周期接入；对已有 Agent 在下一次组装时接入。
@@ -16,13 +21,20 @@
 
 随包提供两个实际功能：**工作区指令**和**继承工具开关**。继承工具开关限制全局工具的可见性/可调用性，不会停止其后台进程，也不能隐藏精确 Agent 层自己的工具。
 
-独立验证页面如下，A/B 工作区和全局插件清单均为测试数据：
+独立验证页面如下，工作区及插件内容均为临时验证数据：
 
 ![工作区插件管理页面](docs/images/workspace-manager-ui.png)
 
 ## 兼容范围
 
-管理器不会自动隔离任意第三方插件。其他插件需要显式注册以下接口之一：
+两种工作区接入方式：
+
+1. **普通插件直接加载**：在“原生插件管理”中先全局停用对应条目，等待宿主实际卸载，再点击“接管到工作区”。随后为各工作区分别启用并编辑 JSON 配置。解除接管保留已保存偏好，全局条目继续停用，是否恢复由用户通过原生开关决定。
+2. **显式适配接口**：用于跨工作区操作，或需要定制挂载/校验的插件。原有接口继续支持。
+
+直接加载当前支持无依赖或只依赖 `systemPrompt`、`tools`、`commands` 的 Cordis Host 模块。全局活动条目、受保护条目、组合树和需要其他全局服务的模块不会直接接管。激活时若发现插件向根 realm 提供服务，会清理本次实例并拒绝该工作区的激活。详情见[通用管理范围](docs/GENERAL_MANAGEMENT.md)。
+
+显式适配接口支持：
 
 | `scope` | 含义 |
 | --- | --- |
@@ -48,7 +60,7 @@ export function apply(ctx) {
 }
 ```
 
-`mount` 只做注册，不驱动 Agent；它返回的清理函数由管理器拥有。插件仍在同一宿主进程中运行：模块全局变量、外部文件、后台任务及自行调用全局注册表的代码，不会被这个接口自动隔离。注册接口表示插件作者已适配这一约定，不是权限沙箱。
+`mount` 只做注册，不驱动 Agent；它返回的清理函数由管理器拥有。两种方式都在同一宿主进程中运行：模块全局变量、外部文件、后台任务及自行调用全局注册表的代码不会自动隔离。作用域检查不构成权限沙箱。原生全局开关影响整个 profile，不能用于模拟某个工作区的独立开关。
 
 ## 跨工作区迁移
 
@@ -69,14 +81,17 @@ export DSH_NATIVE_ROOT=/absolute/path/to/isolated-sdk
 npm run check
 npm test
 npm run test:native
+npm run test:general
 ```
 
 `test:native` 会在本仓库被 Git 忽略的 `.verification/` 下创建独立 profile，使用原生 Loader、Settings、ConfigEditor 验证表单投影、配置落盘、销毁/重建后的恢复，以及两个工作区的不同提示词。它不启动 DSH 桌面服务，不连接运行实例，不发模型请求。
 
-`test:client` 额外需要显式设置 `WPM_BROWSER_DEPENDENCIES`（已含 Playwright 的目录）、`WPM_REACT_DEPENDENCIES`（已含 React 18 和 React DOM 18 的目录）与 `WPM_CHROME_EXECUTABLE`（独立 Chrome/Chromium 可执行文件）。该脚本不下载依赖或浏览器，全部页面请求由测试路由拦截。输出与截图也写入 `.verification/`。
+`test:general` 还需要 SDK 副本包含 `dsh-plugin-manager`、`dsh-host-plugin-inventory` 及依赖。它使用真实原生管理器检查发现、全局配置、脱敏、原生启停结果，以及普通插件直接接管后的 A/B 独立配置和重建恢复。
 
-核心检查共 17 项；隔离 SDK 已与当时安装文件核对。Node 24.21.0 与系统 Node 26.12.0 的核心检查已通过。临时原生 profile 与独立浏览器验证记录见 [验证说明](docs/VALIDATION.md)。运行中的桌面页面、真实在线对话和真实迁移尚未验收；此原型不提供正式安装脚本。`package.json` 中的 `private: true` 用于避免意外发布到 npm，不影响本仓库公开。
+`test:client` 额外需要显式设置 `WPM_BROWSER_DEPENDENCIES`（已含 Playwright 的目录）、`WPM_REACT_DEPENDENCIES`（已含 React 18 和 React DOM 18 的目录）与 `WPM_CHROME_EXECUTABLE`（独立 Chrome/Chromium 可执行文件）。设置 `WPM_NATIVE_CATALOG=1` 可验证完整原生管理与直接接管页面。该脚本不下载依赖或浏览器，全部页面请求由测试路由拦截。输出与截图也写入 `.verification/`。
+
+核心检查共 28 项，当前在系统 Node 26.12.0 通过；旧版 17 项核心检查另有 Node 24.21.0 记录。临时原生 profile 与独立浏览器验证记录见 [验证说明](docs/VALIDATION.md)。正式桌面安装、在线模型循环和真实迁移尚未验收；此预览不提供正式安装脚本。`package.json` 中的 `private: true` 用于避免意外发布到 npm，不影响本仓库公开。
 
 ## 来源
 
-见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。保留了两个上游项目的 MIT 许可证，并区分直接改编代码与仅参考的设计。另附[源码审查](docs/SOURCE_REVIEW.md)和[上游提交及归档校验记录](docs/upstream-provenance.json)。
+见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。保留了上游 MIT 许可证，并区分直接改编代码与仅参考的设计。另附[源码审查](docs/SOURCE_REVIEW.md)和[上游提交及归档校验记录](docs/upstream-provenance.json)。

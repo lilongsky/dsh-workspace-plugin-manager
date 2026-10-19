@@ -4,7 +4,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import assert from 'node:assert/strict'
 import { boot, loadProfileDirectory, readProfilePatches } from '@deepseek-ai/dsh-app-boot'
 
-export async function createNativeFixture() {
+export async function createNativeFixture({ nativeCatalog = false } = {}) {
   const sdk = process.env.DSH_NATIVE_ROOT
   if (!sdk) throw new Error('DSH_NATIVE_ROOT must point to the isolated SDK copy')
   const project = resolve(fileURLToPath(new URL('..', import.meta.url)))
@@ -23,6 +23,11 @@ export async function createNativeFixture() {
     { id: 'settings', name: sdkEntry('dsh-settings') },
     { id: 'workspace-plugin-manager', name: join(project, 'src/index.js') },
   ]
+  if (nativeCatalog) {
+    const ordinary = join(bundle, 'ordinary.mjs')
+    await writeFile(ordinary, `import z from '@deepseek-ai/schemastery'\nexport const inject = ['systemPrompt']\nexport const Config = z.object({ text: z.string().default('global'), credential: z.string().role('secret').default('') })\nexport function apply(ctx, config) { ctx.get('systemPrompt').section({ name: 'ordinary-native', order: 95, text: config.text }) }\n`)
+    rows.push({ id: 'native-plugin-manager', name: sdkEntry('dsh-plugin-manager') }, { id: 'ordinary-native', name: ordinary, config: { text: 'global', credential: 'fixture-credential-only' } })
+  }
   await writeFile(join(bundle, 'cordis.patch.yml'), JSON.stringify([{ insert: rows }]))
   await symlink(bundle, join(profileDir, 'node_modules', 'workspace-fixture'), 'dir')
   await writeFile(join(profileDir, 'package.json'), JSON.stringify({ private: true, name: 'wpm-isolated-spec', dependencies: { 'workspace-fixture': 'file:' + bundle }, dsh: { profile: { bundles: ['workspace-fixture'] } } }))
@@ -38,7 +43,7 @@ export async function createNativeFixture() {
       ctx.provide('agents', { list: () => agents })
       ctx.provide('workspaceRegistry', { list: () => workspaces })
       // Inventory fixture only; no installed DSH profile is queried.
-      ctx.provide('pluginManager', { listBundles: () => [{ name: 'dsh-session-workspace', enabled: true }, { name: 'dsh-unrestricted', enabled: true }] })
+      if (!nativeCatalog) ctx.provide('pluginManager', { listBundles: () => [{ name: 'dsh-session-workspace', enabled: true }, { name: 'dsh-unrestricted', enabled: true }] })
       ctx.provide('connection', { register(_owner, path, rpc) { assert.equal(path, '/dsh-workspace-plugin-manager'); handler = rpc; return () => {} } })
     }, pathToFileURL(join(sdk, 'package.json')).href)
   }
