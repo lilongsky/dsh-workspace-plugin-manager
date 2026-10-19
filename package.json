@@ -1,0 +1,34 @@
+{
+  "name": "dsh-workspace-plugin-manager",
+  "version": "0.1.0-prototype.1",
+  "private": true,
+  "description": "Workspace configuration and lifecycle management for explicitly scope-compatible DSH plugins.",
+  "repository": { "type": "git", "url": "https://github.com/lilongsky/dsh-workspace-plugin-manager.git" },
+  "homepage": "https://github.com/lilongsky/dsh-workspace-plugin-manager#readme",
+  "bugs": { "url": "https://github.com/lilongsky/dsh-workspace-plugin-manager/issues" },
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=24" },
+  "exports": { ".": "./src/index.js", "./client": "./src/client.js", "./manager": "./src/manager.js", "./package.json": "./package.json" },
+  "files": ["src", "cordis.patch.yml", "README.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "licenses", "docs"],
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "inject": ["@deepseek-ai/dsh-client-connection", "@deepseek-ai/dsh-client-ui-renderer", "@deepseek-ai/dsh-client-ui-settings"]
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.5",
+    "@deepseek-ai/schemastery": "~3.18.5",
+    "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
+    "react": "^18.2.0"
+  },
+  "scripts": {
+    "test": "node --import ./tools/sdk-hook.mjs --test tests/*.test.mjs",
+    "test:native": "node --import ./tools/sdk-hook.mjs tools/verify-native-profile.mjs",
+    "test:client": "node --import ./tools/sdk-hook.mjs tools/verify-client.mjs",
+    "check": "node --check src/index.js && node --check src/manager.js && node --check src/client.js && node --check tools/sdk-hook.mjs"
+  }
+}

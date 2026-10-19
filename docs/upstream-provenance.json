@@ -1,0 +1,22 @@
+[
+  {
+    "repo": "Ri0n72Y/dsh-workspace-scope",
+    "version": "0.5.3",
+    "commit": "71db3f5ceb166b88f259f89e610ac6c88b1e5d78",
+    "commit_date": "2026-09-23T14:07:10Z",
+    "source_url": "https://github.com/Ri0n72Y/dsh-workspace-scope/tree/71db3f5ceb166b88f259f89e610ac6c88b1e5d78",
+    "archive_url": "https://api.github.com/repos/Ri0n72Y/dsh-workspace-scope/tarball/71db3f5ceb166b88f259f89e610ac6c88b1e5d78",
+    "archive_sha256": "7f3b3f6e6bb522c88974b42976f6a6359d86f7f707dd3ff6347720731a8034c7",
+    "license": "MIT"
+  },
+  {
+    "repo": "GBDJXB/dsh-workspace-presets",
+    "version": "0.2.2",
+    "commit": "304883bab1ebcabb82cdf4c57f6f2cbdc4b8d536",
+    "commit_date": "2026-10-08T01:43:20Z",
+    "source_url": "https://github.com/GBDJXB/dsh-workspace-presets/tree/304883bab1ebcabb82cdf4c57f6f2cbdc4b8d536",
+    "archive_url": "https://api.github.com/repos/GBDJXB/dsh-workspace-presets/tarball/304883bab1ebcabb82cdf4c57f6f2cbdc4b8d536",
+    "archive_sha256": "cfab39b8fe7f158ec929151a73616b421b8ebbaf93e0bacffabc8db14c761eb5",
+    "license": "MIT"
+  }
+]
