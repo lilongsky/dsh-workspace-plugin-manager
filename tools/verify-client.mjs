@@ -49,8 +49,10 @@ try {
   await select.selectOption('b')
   assert.equal(await card().getByLabel('在此工作区启用').isChecked(), true)
   assert.equal(await card().getByLabel('指令内容').inputValue(), 'B：另一套项目指令')
-  const globals = page.locator('section').filter({ has: page.getByRole('heading', { name: '仍由全局管理的插件' }) })
-  assert.equal(await globals.getByRole('checkbox').count(), 0)
+  if (!nativeCatalog) {
+    const globals = page.locator('section').filter({ has: page.getByRole('heading', { name: '组合包全局状态' }) })
+    assert.equal(await globals.getByRole('checkbox').count(), 0)
+  }
   const prompts = []
   for (const workspace of fixture.workspaces) {
     const agent = { id: workspace.id, status: 'idle', session: { header: { cwd: workspace.path } } }
@@ -62,7 +64,24 @@ try {
   const nativeChecks = []
   if (nativeCatalog) {
     const inventory = page.locator('section').filter({ has: page.getByRole('heading', { name: '原生插件管理', exact: true }) })
+    await inventory.getByLabel('筛选插件').fill('system-prompt')
+    await inventory.getByText('已提供全局服务，保留全局管理：systemPrompt', { exact: true }).waitFor()
+    assert.equal(await inventory.getByText('工作区接管候选：', { exact: false }).count(), 0)
+    await inventory.getByLabel('筛选插件').fill('cross-workspace-native')
+    await inventory.getByText('管理范围：全局', { exact: true }).waitFor()
+    await inventory.getByText('当前工作区模式不支持这些服务，保留全局管理：connection, workspaceRegistry', { exact: true }).waitFor()
+    assert.equal(await inventory.getByRole('button', { name: '接管到工作区' }).count(), 0)
+    assert.equal(await inventory.getByLabel('全局启用').isChecked(), true)
+    await inventory.getByRole('button', { name: '编辑全局配置' }).click()
+    await inventory.getByLabel('全局配置 JSON').fill('{"text":"UI shared global"}')
+    await inventory.getByRole('button', { name: '保存全局配置' }).click()
+    await inventory.getByRole('status').filter({ hasText: '全局配置已保存' }).waitFor()
+    await inventory.getByRole('button', { name: '关闭配置' }).click()
+    const globalValues = []
+    ctx.emit('fixture/global-read', value => globalValues.push(value))
+    assert.deepEqual(globalValues, ['UI shared global'])
     await inventory.getByLabel('筛选插件').fill('ordinary-native')
+    await inventory.getByText('工作区接管候选：', { exact: false }).waitFor()
     await inventory.getByRole('button', { name: '编辑全局配置' }).click()
     const globalJson = inventory.getByLabel('全局配置 JSON')
     assert.equal((await globalJson.inputValue()).includes('fixture-credential-only'), false)
@@ -80,6 +99,7 @@ try {
     const ordinary = () => page.locator('section').filter({ has: page.getByRole('heading', { name: 'ordinary.mjs', exact: true }) })
     try { await ordinary().waitFor({ timeout: 5000 }) }
     catch { throw new Error('普通插件接管没有生成配置卡：' + await inventory.getByRole('status').textContent()) }
+    await inventory.getByText('管理范围：工作区', { exact: true }).waitFor()
     for (const [id, text] of [['a', 'UI ordinary A'], ['b', 'UI ordinary B']]) {
       await select.selectOption(id)
       await ordinary().getByLabel('在此工作区启用').check()
@@ -102,7 +122,8 @@ try {
       nativePrompts.push((await ctx.get('systemPrompt').assemble({ agent, scope: agent })).sections.find(s => s.name === 'ordinary-native')?.text ?? null)
     }
     assert.deepEqual(nativePrompts, [null, 'UI ordinary B'])
-    nativeChecks.push('原生清单与全局开关', '原生全局配置保存', '密钥未展示', '原生重启要求如实展示', '普通插件经页面直接接管', '普通插件 A/B 独立配置及单方停用')
+    nativeChecks.push('原生清单与全局开关', '原生全局配置保存', '密钥未展示', '原生重启要求如实展示', '普通插件经页面直接接管', '普通插件 A/B 独立配置及单方停用', '全局与工作区管理范围明确展示', '不支持接管的插件显示原因且没有接管按钮', '全局插件保留配置编辑且只有一个运行实例', '原生全局服务提供者不列为接管候选')
+    await inventory.getByLabel('筛选插件').fill('')
   }
   await page.screenshot({ path: join(fixture.evidence, 'workspace-manager-ui.png'), fullPage: true })
   assert.deepEqual(errors, [])

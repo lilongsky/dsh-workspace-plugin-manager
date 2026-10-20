@@ -1,6 +1,6 @@
 {
   "name": "dsh-workspace-plugin-manager",
-  "version": "0.2.0-alpha.1",
+  "version": "0.2.0-alpha.2",
   "private": true,
   "description": "Native DSH plugin management and workspace instances for scoped Cordis plugins.",
   "repository": { "type": "git", "url": "https://github.com/lilongsky/dsh-workspace-plugin-manager.git" },

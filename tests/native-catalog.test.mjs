@@ -76,6 +76,47 @@ test('active global plugins and cross-workspace dependencies cannot be silently 
   assert.deepEqual(f.document().nativePlugins, [])
 })
 
+test('inventory explains global management while preserving native controls', async t => {
+  const f = await fixture(t, { inject: ['connection', 'workspaceRegistry'] })
+  let row = (await f.catalog.snapshot()).plugins[0]
+  assert.equal(row.managementScope, 'global')
+  assert.equal(row.workspaceSupport.status, 'global')
+  assert.match(row.workspaceSupport.reason, /connection, workspaceRegistry/)
+  await assert.rejects(f.catalog.manage(f.entry.id, true), { code: 'global-dependencies' })
+  assert.equal((await f.catalog.setEnabled('plugin', f.entry.id, true)).application, 'applied')
+  row = (await f.catalog.snapshot()).plugins[0]
+  assert.equal(row.enabled, true)
+  assert.equal(row.managementScope, 'global')
+  assert.equal(row.managed, false)
+})
+
+test('inventory does not import inactive modules and distinguishes candidates from managed entries', async t => {
+  const f = await fixture(t)
+  const namespace = f.entry.moduleNamespace
+  f.entry.moduleNamespace = undefined
+  f.entry.parent = { tree: { import() { throw new Error('inventory must not execute inactive code') } } }
+  assert.equal((await f.catalog.snapshot()).plugins[0].workspaceSupport.status, 'unchecked')
+  f.entry.moduleNamespace = namespace
+  assert.equal((await f.catalog.snapshot()).plugins[0].workspaceSupport.status, 'candidate')
+  assert.equal((await f.catalog.snapshot()).plugins[0].managementScope, 'global')
+  await f.catalog.manage(f.entry.id, true)
+  assert.equal((await f.catalog.snapshot()).plugins[0].managementScope, 'workspace')
+})
+
+test('known root service providers stay global after their active instance stops', async t => {
+  const f = await fixture(t, { inject: [] })
+  const fiber = f.ctx.plugin({ apply(ctx) { ctx.provide('fixtureGlobalService', {}) } })
+  await fiber.await()
+  f.entry.fiber = fiber.ctx.fiber
+  let support = (await f.catalog.snapshot()).plugins[0].workspaceSupport
+  assert.equal(support.status, 'global')
+  assert.match(support.reason, /fixtureGlobalService/)
+  await fiber.dispose(); f.entry.fiber = undefined
+  support = (await f.catalog.snapshot()).plugins[0].workspaceSupport
+  assert.equal(support.status, 'global')
+  await assert.rejects(f.catalog.manage(f.entry.id, true), { code: 'global-services' })
+})
+
 test('native API outcomes and identity are retained, including restart requirements', async t => {
   const f = await fixture(t)
   assert.equal((await f.catalog.setEnabled('plugin', f.entry.id, true)).application, 'applied')

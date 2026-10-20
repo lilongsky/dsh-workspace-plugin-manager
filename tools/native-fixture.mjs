@@ -25,8 +25,10 @@ export async function createNativeFixture({ nativeCatalog = false } = {}) {
   ]
   if (nativeCatalog) {
     const ordinary = join(bundle, 'ordinary.mjs')
+    const global = join(bundle, 'global.mjs')
     await writeFile(ordinary, `import z from '@deepseek-ai/schemastery'\nexport const inject = ['systemPrompt']\nexport const Config = z.object({ text: z.string().default('global'), credential: z.string().role('secret').default('') })\nexport function apply(ctx, config) { ctx.get('systemPrompt').section({ name: 'ordinary-native', order: 95, text: config.text }) }\n`)
-    rows.push({ id: 'native-plugin-manager', name: sdkEntry('dsh-plugin-manager') }, { id: 'ordinary-native', name: ordinary, config: { text: 'global', credential: 'fixture-credential-only' } })
+    await writeFile(global, `import z from '@deepseek-ai/schemastery'\nexport const inject = ['connection', 'workspaceRegistry']\nexport const Config = z.object({ text: z.string().default('shared global') })\nexport function apply(ctx, config) { ctx.on('fixture/global-read', report => report(config.text)) }\n`)
+    rows.push({ id: 'native-plugin-manager', name: sdkEntry('dsh-plugin-manager') }, { id: 'ordinary-native', name: ordinary, config: { text: 'global', credential: 'fixture-credential-only' } }, { id: 'cross-workspace-native', name: global, config: { text: 'shared global' } })
   }
   await writeFile(join(bundle, 'cordis.patch.yml'), JSON.stringify([{ insert: rows }]))
   await symlink(bundle, join(profileDir, 'node_modules', 'workspace-fixture'), 'dir')

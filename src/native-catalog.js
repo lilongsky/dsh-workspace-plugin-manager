@@ -38,21 +38,44 @@ function rootServices(ctx, root) {
 
 /** Native profile management plus direct loading of scoped Cordis modules. */
 export class NativePluginCatalog {
-  constructor(ctx, manager) { this.ctx = ctx; this.manager = manager; this.ownerEntryId = ctx.fiber.entry?.id; this.sources = new Map(); this.queue = Promise.resolve() }
+  constructor(ctx, manager) { this.ctx = ctx; this.manager = manager; this.ownerEntryId = ctx.fiber.entry?.id; this.sources = new Map(); this.globalProviders = new WeakMap(); this.queue = Promise.resolve() }
   entry(id) {
     const entry = [...(this.ctx.get('loader')?.entries() ?? [])].find(row => row.id === id)
     if (!entry) fail('unknown-plugin', '插件条目不存在或已卸载')
     return entry
+  }
+  workspaceSupport(entry, readOnlyReason, namespace = entry?.moduleNamespace) {
+    const global = (code, reason) => ({ status: 'global', code, reason })
+    if (readOnlyReason) return global('unsupported-plugin', '受保护或无法独立寻址的条目保留全局管理')
+    if (!entry) return global('unknown-plugin', '原生条目已移除')
+    if (entry.options.group || entry.subtree) return global('unsupported-plugin', '组合树保留全局管理')
+    if (entry.options.inject && Object.keys(entry.options.inject).length) return global('unsupported-plugin', '带独立服务拦截的条目保留全局管理')
+    // Inventory must not import a disabled plugin just to classify it.
+    if (namespace === undefined) return { status: 'unchecked', reason: '模块尚未加载，接管时检查入口与依赖' }
+    const plugin = this.ctx.get('loader').unwrapExports(namespace)
+    if (!plugin || (typeof plugin !== 'function' && typeof plugin.apply !== 'function')) return global('unsupported-plugin', '此模块没有可直接接管的 Cordis Host 入口')
+    const provided = entry.fiber ? rootServices(this.ctx, entry.fiber.ctx.fiber) : []
+    if (provided.length) this.globalProviders.set(namespace, provided)
+    const services = this.globalProviders.get(namespace) ?? []
+    if (services.length) return global('global-services', `已提供全局服务，保留全局管理：${services.join(', ')}`)
+    const unsupported = dependencies(plugin).filter(name => !SCOPED_SERVICES.has(name))
+    if (unsupported.length) return global('global-dependencies', `当前工作区模式不支持这些服务，保留全局管理：${unsupported.join(', ')}`)
+    return { status: 'candidate', reason: '入口与依赖符合接管范围；插件须通过所提供的作用域注册贡献' }
   }
   async snapshot() {
     const service = this.ctx.get('pluginManager')
     if (!service?.listPlugins) return { available: false, bundles: [], plugins: [] }
     const [bundles, plugins] = await Promise.all([service.listBundles(), service.listPlugins()])
     const configurable = new Set((this.ctx.get('configEditor')?.entries() ?? []).filter(entry => entry.fiber?.state === 2).map(entry => entry.id))
+    const entries = new Map([...(this.ctx.get('loader')?.entries() ?? [])].map(entry => [entry.id, entry]))
     return {
       available: true,
       bundles: bundles.filter(b => b.installed || b.enabled || b.availability !== 'missing').map(b => ({ name: b.name, version: b.version, enabled: b.enabled, installed: b.installed, error: b.error, readOnlyReason: b.readOnlyReason, protected: b.name === OWN_MODULE || !!b.readOnlyReason || (b.rows ?? []).some(row => row.entryId === this.ownerEntryId) })),
-      plugins: [...plugins.map(p => ({ entryId: p.entryId, moduleName: p.moduleName, enabled: p.enabled, state: p.state, readOnlyReason: p.moduleName === OWN_MODULE || p.entryId === this.ownerEntryId ? 'manager-required' : p.readOnlyReason, configurable: p.moduleName !== OWN_MODULE && p.entryId !== this.ownerEntryId && configurable.has(p.entryId), managed: this.sources.has(p.entryId), workspaceReason: this.sources.get(p.entryId)?.reason })), ...[...this.sources].filter(([id]) => !plugins.some(p => p.entryId === id)).map(([id, source]) => ({ entryId: id, moduleName: id, enabled: false, managed: true, workspaceReason: source.reason ?? '原生条目已移除，可解除接管' }))],
+      plugins: [...plugins.map(p => {
+        const readOnlyReason = p.moduleName === OWN_MODULE || p.entryId === this.ownerEntryId ? 'manager-required' : p.readOnlyReason
+        const managed = this.sources.has(p.entryId)
+        return { entryId: p.entryId, moduleName: p.moduleName, enabled: p.enabled, state: p.state, readOnlyReason, configurable: p.moduleName !== OWN_MODULE && p.entryId !== this.ownerEntryId && configurable.has(p.entryId), managed, managementScope: managed ? 'workspace' : 'global', workspaceSupport: this.workspaceSupport(entries.get(p.entryId), readOnlyReason), workspaceReason: this.sources.get(p.entryId)?.reason }
+      }), ...[...this.sources].filter(([id]) => !plugins.some(p => p.entryId === id)).map(([id, source]) => ({ entryId: id, moduleName: id, enabled: false, managed: true, managementScope: 'workspace', workspaceSupport: this.workspaceSupport(), workspaceReason: source.reason ?? '原生条目已移除，可解除接管' }))],
     }
   }
   async setEnabled(kind, id, enabled) {
@@ -93,17 +116,17 @@ export class NativePluginCatalog {
     if (!row || row.readOnlyReason) fail('unsupported-plugin', '此条目不能接管为工作区插件')
     const entry = this.entry(entryId)
     if (!entry.disabled) fail('global-conflict', '请先通过原生开关停用此全局条目，再接管到工作区')
-    if (entry.options.group || entry.subtree) fail('unsupported-plugin', '组合树请保留原生管理')
-    if (entry.options.inject && Object.keys(entry.options.inject).length) fail('unsupported-plugin', '带独立服务拦截的条目请保留原生管理')
+    const existingSupport = this.workspaceSupport(entry, row.readOnlyReason)
+    if (existingSupport.status === 'global') fail(existingSupport.code, existingSupport.reason)
     const loader = this.ctx.get('loader')
-    const plugin = loader.unwrapExports(entry.moduleNamespace ?? await entry.parent.tree.import(entry.options.name))
-    if (!plugin || (typeof plugin !== 'function' && typeof plugin.apply !== 'function')) fail('unsupported-plugin', '此模块没有 Cordis Host 插件入口')
-    const unsupported = dependencies(plugin).filter(name => !SCOPED_SERVICES.has(name))
-    if (unsupported.length) fail('global-dependencies', `此插件依赖全局服务，保留全局管理：${unsupported.join(', ')}`)
+    const namespace = entry.moduleNamespace ?? await entry.parent.tree.import(entry.options.name)
+    const support = this.workspaceSupport(entry, row.readOnlyReason, namespace)
+    if (support.status !== 'candidate') fail(support.code ?? 'unsupported-plugin', support.reason)
+    const plugin = loader.unwrapExports(namespace)
     const schema = plugin.Config?.toJSON ? plugin.Config : undefined
     const defaults = { settings: clone(entry.options.config ?? {}) }
     const descriptor = {
-      id: nativeId(entryId), title: moduleLabel(entry.options.name), description: '普通 Cordis 插件；每个对话加载独立实例。隐藏密钥在保存时保留。', scope: 'workspace',
+      id: nativeId(entryId), title: moduleLabel(entry.options.name), description: '按对话加载独立 Host 实例和配置；作用域注册分别生效。隐藏密钥在保存时保留。', scope: 'workspace',
       fields: { settings: { type: 'json', title: '插件配置（JSON）' } }, defaults,
       native: { entryId, schema },
       validate: config => { schema?.(clone(config.settings)) },
