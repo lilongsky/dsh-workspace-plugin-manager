@@ -10,7 +10,8 @@ export function validateConfig(descriptor, input = {}) {
     const field = descriptor.fields?.[key]
     if (!field) fail('invalid-config', `未知配置项：${key}`)
     const value = input[key]
-    const valid = field.type === 'boolean' ? typeof value === 'boolean'
+    const valid = field.type === 'json' ? value !== undefined
+      : field.type === 'boolean' ? typeof value === 'boolean'
       : field.type === 'number' ? typeof value === 'number' && Number.isFinite(value)
       : field.type === 'string-list' ? Array.isArray(value) && value.every(v => typeof v === 'string')
       : typeof value === 'string'

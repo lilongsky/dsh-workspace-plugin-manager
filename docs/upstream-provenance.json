@@ -18,5 +18,14 @@
     "archive_url": "https://api.github.com/repos/GBDJXB/dsh-workspace-presets/tarball/304883bab1ebcabb82cdf4c57f6f2cbdc4b8d536",
     "archive_sha256": "cfab39b8fe7f158ec929151a73616b421b8ebbaf93e0bacffabc8db14c761eb5",
     "license": "MIT"
+  },
+  {
+    "repo": "deepseek-ai/deepseek-harness",
+    "package": "@deepseek-ai/dsh-agent-preset-registry",
+    "version": "0.2.1-rc.2",
+    "source_url": "https://github.com/deepseek-ai/deepseek-harness/tree/dsh-v0.2.1-rc.2/packages/preset/agent-preset-registry",
+    "source_file": "lib/types/mount.js",
+    "source_sha256": "80f0ba48e6ab9350f0dcb1764817aab0f5bc47f730769934fa17ce0291f3e6d4",
+    "license": "MIT"
   }
 ]

@@ -1,8 +1,8 @@
 {
   "name": "dsh-workspace-plugin-manager",
-  "version": "0.1.0-prototype.1",
+  "version": "0.2.0-alpha.2",
   "private": true,
-  "description": "Workspace configuration and lifecycle management for explicitly scope-compatible DSH plugins.",
+  "description": "Native DSH plugin management and workspace instances for scoped Cordis plugins.",
   "repository": { "type": "git", "url": "https://github.com/lilongsky/dsh-workspace-plugin-manager.git" },
   "homepage": "https://github.com/lilongsky/dsh-workspace-plugin-manager#readme",
   "bugs": { "url": "https://github.com/lilongsky/dsh-workspace-plugin-manager/issues" },
@@ -23,12 +23,14 @@
     "@deepseek-ai/schemastery": "~3.18.5",
     "@deepseek-ai/dsh-agent": "0.2.1-rc.2",
     "@deepseek-ai/dsh-system-prompt": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-settings": "0.2.1-rc.2",
     "react": "^18.2.0"
   },
   "scripts": {
     "test": "node --import ./tools/sdk-hook.mjs --test tests/*.test.mjs",
     "test:native": "node --import ./tools/sdk-hook.mjs tools/verify-native-profile.mjs",
+    "test:general": "node --import ./tools/sdk-hook.mjs tools/verify-general-profile.mjs",
     "test:client": "node --import ./tools/sdk-hook.mjs tools/verify-client.mjs",
-    "check": "node --check src/index.js && node --check src/manager.js && node --check src/client.js && node --check tools/sdk-hook.mjs"
+    "check": "node --check src/index.js && node --check src/manager.js && node --check src/client.js && node --check src/native-catalog.js && node --check src/config-data.js && node --check tools/sdk-hook.mjs"
   }
 }

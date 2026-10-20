@@ -177,3 +177,13 @@ test('an adapter activation error blocks assembly and cleans up its partial regi
   const safe = await f.ctx.get('systemPrompt').assemble({ scope: a })
   assert.equal(safe.sections.some(s => s.name === 'broken:partial'), false)
 })
+
+test('changing into a workspace subdirectory keeps its settings; leaving registered workspaces releases them', async t => {
+  const f = await fixture(t)
+  await f.set('a', 'workspace-instructions', true, { text: 'project A' })
+  const a = await f.agent('a', 'a')
+  a.session.header.cwd += '/src'
+  assert.equal(await f.text(a), 'project A')
+  a.session.header.cwd = '/tmp/unregistered-project'
+  assert.equal(await f.text(a), undefined)
+})
